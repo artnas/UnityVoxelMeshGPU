@@ -1,0 +1,231 @@
+#version 460 core
+
+#define CHUNK_SIZE 80
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+struct Vertex {
+    float px, py, pz;
+    float tx, ty;
+    float nx, ny, nz;
+};
+
+struct GeometryData {
+    uint vertexCount;
+    uint indexCount;
+};
+
+struct ChunkFeedback {
+    uint vertexOffset;
+    uint vertexCount;
+    uint indexOffset;
+    uint indexCount;
+};
+
+struct DrawCommandData {
+	uint indexCount;
+	uint instanceCount;
+	uint firstIndex;
+	int vertexOffset;
+	uint firstInstance;
+};
+
+layout (std430, binding = 1) readonly buffer VoxelBuffer {
+    int data[];
+} uVoxels;
+
+layout (std430, binding = 2) writeonly buffer VertexBuffer {
+    Vertex data[];
+} uVertices;
+
+layout (std430, binding = 3) writeonly buffer IndexBuffer {
+    uint data[];
+} uIndices;
+
+layout (std430, binding = 6) readonly buffer FeedbackBuffer {
+    GeometryData data;
+} uFeedback;
+
+layout (std430, binding = 7) readonly buffer ChunkFeedbackBuffer {
+    ChunkFeedback data[];
+} uChunkFeedback;
+
+shared uint sVertexOffset;
+shared uint sVertexCount;
+shared uint sIndexOffset;
+shared uint sIndexCount;
+shared uint sChunkIndex;
+
+uint to1D(in uvec3 pos) {
+    return pos.x + CHUNK_SIZE * (pos.y + CHUNK_SIZE * pos.z);
+}
+
+int to1D(in ivec3 pos) {
+    return pos.x + CHUNK_SIZE * (pos.y + CHUNK_SIZE * pos.z);
+}
+
+uvec3 to3D(in uint idx) {
+    uint x = idx % CHUNK_SIZE;
+    uint y = (idx / CHUNK_SIZE) % CHUNK_SIZE;
+    uint z = idx / (CHUNK_SIZE * CHUNK_SIZE);
+
+    // uint z = idx / (CHUNK_SIZE * CHUNK_SIZE);
+    // idx -= (z * CHUNK_SIZE * CHUNK_SIZE);
+    // uint y = idx / CHUNK_SIZE;
+    // uint x = idx % CHUNK_SIZE;
+    return uvec3(x, y, z);
+}
+
+bool hasVoxel(in ivec3 coord) {
+    if (coord.x < 0 || coord.x >= CHUNK_SIZE || 
+        coord.y < 0 || coord.y >= CHUNK_SIZE ||
+        coord.z < 0 || coord.z >= CHUNK_SIZE) {
+        return false;
+    }
+
+    int idx = to1D(coord);
+    return uVoxels.data[idx] > 0;
+}
+
+void setVertex(out Vertex vertex, in vec3 position, in vec2 texcoord, in vec3 normal) {
+    vertex.px = position.x; vertex.py = position.y; vertex.pz = position.z;
+    vertex.tx = texcoord.x; vertex.ty = texcoord.y;
+    vertex.nx = normal.x; vertex.ny = normal.y; vertex.nz = normal.z;
+}
+
+void main() {
+    if (gl_LocalInvocationIndex == 0) {
+        // sChunkIndex = uChunkIndices.data[gl_WorkGroupID.x + 10 * (gl_WorkGroupID.y + 10 * gl_WorkGroupID.z)];
+        sChunkIndex = gl_WorkGroupID.x + 10 * (gl_WorkGroupID.y + 10 * gl_WorkGroupID.z);
+        sVertexOffset = uChunkFeedback.data[sChunkIndex].vertexOffset;
+        sIndexOffset = uChunkFeedback.data[sChunkIndex].indexOffset;
+        sVertexCount = uChunkFeedback.data[sChunkIndex].vertexCount;
+        sIndexCount = uChunkFeedback.data[sChunkIndex].indexCount;
+    }
+
+    barrier();
+
+    uint globalVoxelIndex = to1D(gl_GlobalInvocationID);
+
+    if (uVoxels.data[globalVoxelIndex] > 0) {
+        ivec3 coord = ivec3(gl_GlobalInvocationID);
+        
+        uint vertexCount = 0;
+        uint indexCount = 0;
+
+        vec3 position = vec3(coord);
+        // +X
+        if (!hasVoxel(coord + ivec3(1, 0, 0))) {
+            uint vertexOffset = atomicAdd(sVertexOffset, 4);
+            uint indexOffset = atomicAdd(sIndexOffset, 6);
+            
+            setVertex(uVertices.data[vertexOffset + 0], position + vec3(0.5, 0.5, 0.5), vec2(0.0, 0.0), vec3(1.0, 0.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 1], position + vec3(0.5, -0.5, 0.5), vec2(0.0, 1.0), vec3(1.0, 0.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 2], position + vec3(0.5, -0.5, -0.5), vec2(1.0, 1.0), vec3(1.0, 0.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 3], position + vec3(0.5, 0.5, -0.5), vec2(1.0, 0.0), vec3(1.0, 0.0, 0.0));
+
+            uIndices.data[indexOffset + 0] = vertexOffset;
+            uIndices.data[indexOffset + 1] = vertexOffset + 1;
+            uIndices.data[indexOffset + 2] = vertexOffset + 2;
+
+            uIndices.data[indexOffset + 3] = vertexOffset + 2;
+            uIndices.data[indexOffset + 4] = vertexOffset + 3;
+            uIndices.data[indexOffset + 5] = vertexOffset;
+        }
+
+        // -X
+        if (!hasVoxel(coord + ivec3(-1, 0, 0))) {
+            uint vertexOffset = atomicAdd(sVertexOffset, 4);
+            uint indexOffset = atomicAdd(sIndexOffset, 6);
+            
+            setVertex(uVertices.data[vertexOffset + 0], position + vec3(-0.5, 0.5, -0.5), vec2(0.0, 0.0), vec3(-1.0, 0.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 1], position + vec3(-0.5, -0.5, -0.5), vec2(0.0, 1.0), vec3(-1.0, 0.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 2], position + vec3(-0.5, -0.5, 0.5), vec2(1.0, 1.0), vec3(-1.0, 0.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 3], position + vec3(-0.5, 0.5, 0.5), vec2(1.0, 0.0), vec3(-1.0, 0.0, 0.0));
+
+            uIndices.data[indexOffset + 0] = vertexOffset;
+            uIndices.data[indexOffset + 1] = vertexOffset + 1;
+            uIndices.data[indexOffset + 2] = vertexOffset + 2;
+
+            uIndices.data[indexOffset + 3] = vertexOffset + 2;
+            uIndices.data[indexOffset + 4] = vertexOffset + 3;
+            uIndices.data[indexOffset + 5] = vertexOffset;
+        }
+
+        // +Y
+        if (!hasVoxel(coord + ivec3(0, 1, 0))) {
+            uint vertexOffset = atomicAdd(sVertexOffset, 4);
+            uint indexOffset = atomicAdd(sIndexOffset, 6);
+            
+            setVertex(uVertices.data[vertexOffset + 0], position + vec3(-0.5, 0.5, -0.5), vec2(0.0, 0.0), vec3(0.0, 1.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 1], position + vec3(-0.5, 0.5, 0.5), vec2(0.0, 1.0), vec3(0.0, 1.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 2], position + vec3(0.5, 0.5, 0.5), vec2(1.0, 1.0), vec3(0.0, 1.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 3], position + vec3(0.5, 0.5, -0.5), vec2(1.0, 0.0), vec3(0.0, 1.0, 0.0));
+
+            uIndices.data[indexOffset + 0] = vertexOffset;
+            uIndices.data[indexOffset + 1] = vertexOffset + 1;
+            uIndices.data[indexOffset + 2] = vertexOffset + 2;
+
+            uIndices.data[indexOffset + 3] = vertexOffset + 2;
+            uIndices.data[indexOffset + 4] = vertexOffset + 3;
+            uIndices.data[indexOffset + 5] = vertexOffset;
+        }
+
+        // -Y
+        if (!hasVoxel(coord + ivec3(0, -1, 0))) {
+            uint vertexOffset = atomicAdd(sVertexOffset, 4);
+            uint indexOffset = atomicAdd(sIndexOffset, 6);
+            
+            setVertex(uVertices.data[vertexOffset + 0], position + vec3(-0.5, -0.5, 0.5), vec2(0.0, 0.0), vec3(0.0, -1.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 1], position + vec3(-0.5, -0.5, -0.5), vec2(0.0, 1.0), vec3(0.0, -1.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 2], position + vec3(0.5, -0.5, -0.5), vec2(1.0, 1.0), vec3(0.0, -1.0, 0.0));
+            setVertex(uVertices.data[vertexOffset + 3], position + vec3(0.5, -0.5, 0.5), vec2(1.0, 0.0), vec3(0.0, -1.0, 0.0));
+
+            uIndices.data[indexOffset + 0] = vertexOffset;
+            uIndices.data[indexOffset + 1] = vertexOffset + 1;
+            uIndices.data[indexOffset + 2] = vertexOffset + 2;
+
+            uIndices.data[indexOffset + 3] = vertexOffset + 2;
+            uIndices.data[indexOffset + 4] = vertexOffset + 3;
+            uIndices.data[indexOffset + 5] = vertexOffset;
+        }
+
+        // +Z
+        if (!hasVoxel(coord + ivec3(0, 0, 1))) {
+            uint vertexOffset = atomicAdd(sVertexOffset, 4);
+            uint indexOffset = atomicAdd(sIndexOffset, 6);
+            
+            setVertex(uVertices.data[vertexOffset + 0], position + vec3(-0.5, 0.5, 0.5), vec2(0.0, 0.0), vec3(0.0, 0.0, 1.0));
+            setVertex(uVertices.data[vertexOffset + 1], position + vec3(-0.5, -0.5, 0.5), vec2(0.0, 1.0), vec3(0.0, 0.0, 1.0));
+            setVertex(uVertices.data[vertexOffset + 2], position + vec3(0.5, -0.5, 0.5), vec2(1.0, 1.0), vec3(0.0, 0.0, 1.0));
+            setVertex(uVertices.data[vertexOffset + 3], position + vec3(0.5, 0.5, 0.5), vec2(1.0, 0.0), vec3(0.0, 0.0, 1.0));
+
+            uIndices.data[indexOffset + 0] = vertexOffset;
+            uIndices.data[indexOffset + 1] = vertexOffset + 1;
+            uIndices.data[indexOffset + 2] = vertexOffset + 2;
+
+            uIndices.data[indexOffset + 3] = vertexOffset + 2;
+            uIndices.data[indexOffset + 4] = vertexOffset + 3;
+            uIndices.data[indexOffset + 5] = vertexOffset;
+        }
+
+        // -Z
+        if (!hasVoxel(coord + ivec3(0, 0, -1))) {
+            uint vertexOffset = atomicAdd(sVertexOffset, 4);
+            uint indexOffset = atomicAdd(sIndexOffset, 6);
+            
+            setVertex(uVertices.data[vertexOffset + 0], position + vec3(0.5, 0.5, -0.5), vec2(0.0, 0.0), vec3(0.0, 0.0, -1.0));
+            setVertex(uVertices.data[vertexOffset + 1], position + vec3(0.5, -0.5, -0.5), vec2(0.0, 1.0), vec3(0.0, 0.0, -1.0));
+            setVertex(uVertices.data[vertexOffset + 2], position + vec3(-0.5, -0.5, -0.5), vec2(1.0, 1.0), vec3(0.0, 0.0, -1.0));
+            setVertex(uVertices.data[vertexOffset + 3], position + vec3(-0.5, 0.5, -0.5), vec2(1.0, 0.0), vec3(0.0, 0.0, -1.0));
+
+            uIndices.data[indexOffset + 0] = vertexOffset;
+            uIndices.data[indexOffset + 1] = vertexOffset + 1;
+            uIndices.data[indexOffset + 2] = vertexOffset + 2;
+
+            uIndices.data[indexOffset + 3] = vertexOffset + 2;
+            uIndices.data[indexOffset + 4] = vertexOffset + 3;
+            uIndices.data[indexOffset + 5] = vertexOffset;
+        }
+    }
+}

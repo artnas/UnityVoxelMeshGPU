@@ -1,0 +1,119 @@
+﻿#pragma kernel CSMain
+
+#define CHUNK_SIZE 80
+
+struct GeometryData {
+    uint vertexCount;
+    uint indexCount;
+};
+
+struct ChunkFeedback {
+    uint vertexOffset;
+    uint vertexCount;
+    uint indexOffset;
+    uint indexCount;
+};
+
+RWStructuredBuffer<int> uVoxels;
+RWStructuredBuffer<GeometryData> uFeedback;
+RWStructuredBuffer<ChunkFeedback> uChunkFeedback;
+
+groupshared uint sVertexCount;
+groupshared uint sIndexCount;
+
+uint to1D(uint3 pos) {
+    return pos.x + CHUNK_SIZE * (pos.y + CHUNK_SIZE * pos.z);
+}
+
+int to1D(int3 pos) {
+    return pos.x + CHUNK_SIZE * (pos.y + CHUNK_SIZE * pos.z);
+}
+
+uint3 to3D(uint idx) {
+    uint x = idx % CHUNK_SIZE;
+    uint y = (idx / CHUNK_SIZE) % CHUNK_SIZE;
+    uint z = idx / (CHUNK_SIZE * CHUNK_SIZE);
+    
+    return uint3(x, y, z);
+}
+
+bool hasVoxel(int3 coord) {
+    if (coord.x < 0 || coord.x >= CHUNK_SIZE || 
+        coord.y < 0 || coord.y >= CHUNK_SIZE ||
+        coord.z < 0 || coord.z >= CHUNK_SIZE) {
+        return false;
+    }
+
+    int idx = to1D(coord);
+    return uVoxels[idx] > 0;
+}
+
+[numthreads(8, 8, 8)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    if (id.x == 0 && id.y == 0 && id.z == 0) {
+        sVertexCount = 0;
+        sIndexCount = 0;
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    uint globalVoxelIndex = to1D(id);
+
+    if (uVoxels[globalVoxelIndex] > 0) {
+        int3 coord = int3(id);
+
+        uint vertexCount = 0;
+        uint indexCount = 0;
+
+        if (!hasVoxel(coord + int3(1, 0, 0))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        if (!hasVoxel(coord + int3(-1, 0, 0))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        if (!hasVoxel(coord + int3(0, 1, 0))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        if (!hasVoxel(coord + int3(0, -1, 0))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        if (!hasVoxel(coord + int3(0, 0, 1))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        if (!hasVoxel(coord + int3(0, 0, -1))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+        
+        InterlockedAdd(sVertexCount, vertexCount);
+        InterlockedAdd(sIndexCount, indexCount);
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
+    if (id.x == 0 && id.y == 0 && id.z == 0)
+    {
+        uint vertexOffset, indexOffset;
+        
+        InterlockedAdd(uFeedback[0].vertexCount, sVertexCount, vertexOffset);
+        InterlockedAdd(uFeedback[0].indexCount, sIndexCount, indexOffset);
+        
+        uint index = id.x + 10 * (id.y + 10 * id.z);
+
+        uChunkFeedback[index].vertexOffset = vertexOffset;
+        uChunkFeedback[index].vertexCount = sVertexCount;
+        uChunkFeedback[index].indexOffset = indexOffset;
+        uChunkFeedback[index].indexCount = sIndexCount;
+    }
+}

@@ -1,0 +1,128 @@
+#version 460 core
+
+#define CHUNK_SIZE 80
+
+layout (local_size_x = 8, local_size_y = 8, local_size_z = 8) in;
+
+struct GeometryData {
+    uint vertexCount;
+    uint indexCount;
+};
+
+struct ChunkFeedback {
+    uint vertexOffset;
+    uint vertexCount;
+    uint indexOffset;
+    uint indexCount;
+};
+
+layout (std430, binding = 1) readonly buffer VoxelBuffer {
+    int data[];
+} uVoxels;
+
+layout (std430, binding = 6) buffer FeedbackBuffer {
+    GeometryData data;
+} uFeedback;
+
+layout (std430, binding = 7) writeonly buffer ChunkFeedbackBuffer {
+    ChunkFeedback data[];
+} uChunkFeedback;
+
+shared uint sVertexCount;
+shared uint sIndexCount;
+
+uint to1D(in uvec3 pos) {
+    return pos.x + CHUNK_SIZE * (pos.y + CHUNK_SIZE * pos.z);
+}
+
+int to1D(in ivec3 pos) {
+    return pos.x + CHUNK_SIZE * (pos.y + CHUNK_SIZE * pos.z);
+}
+
+uvec3 to3D(in uint idx) {
+    uint x = idx % CHUNK_SIZE;
+    uint y = (idx / CHUNK_SIZE) % CHUNK_SIZE;
+    uint z = idx / (CHUNK_SIZE * CHUNK_SIZE);
+
+    // uint z = idx / (CHUNK_SIZE * CHUNK_SIZE);
+    // idx -= (z * CHUNK_SIZE * CHUNK_SIZE);
+    // uint y = idx / CHUNK_SIZE;
+    // uint x = idx % CHUNK_SIZE;
+    return uvec3(x, y, z);
+}
+
+bool hasVoxel(in ivec3 coord) {
+    if (coord.x < 0 || coord.x >= CHUNK_SIZE || 
+        coord.y < 0 || coord.y >= CHUNK_SIZE ||
+        coord.z < 0 || coord.z >= CHUNK_SIZE) {
+        return false;
+    }
+
+    int idx = to1D(coord);
+    return uVoxels.data[idx] > 0;
+}
+
+void main() {
+    if (gl_LocalInvocationIndex == 0) {
+        sVertexCount = 0;
+        sIndexCount = 0;
+    }
+
+    barrier();
+
+    uint globalVoxelIndex = to1D(gl_GlobalInvocationID);
+
+    if (uVoxels.data[globalVoxelIndex] > 0) {
+        ivec3 coord = ivec3(gl_GlobalInvocationID);
+
+        uint vertexCount = 0;
+        uint indexCount = 0;
+
+        if (!hasVoxel(coord + ivec3(1, 0, 0))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        if (!hasVoxel(coord + ivec3(-1, 0, 0))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        if (!hasVoxel(coord + ivec3(0, 1, 0))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        if (!hasVoxel(coord + ivec3(0, -1, 0))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        if (!hasVoxel(coord + ivec3(0, 0, 1))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        if (!hasVoxel(coord + ivec3(0, 0, -1))) {
+            vertexCount += 4;
+            indexCount += 6;
+        }
+
+        atomicAdd(sVertexCount, vertexCount);
+        atomicAdd(sIndexCount, indexCount);
+    }
+
+    barrier();
+
+    if (gl_LocalInvocationIndex == 0) {
+        uint vertexOffset = atomicAdd(uFeedback.data.vertexCount, sVertexCount);
+        uint indexOffset = atomicAdd(uFeedback.data.indexCount, sIndexCount);
+        
+        uint index = gl_WorkGroupID.x + 10 * (gl_WorkGroupID.y + 10 * gl_WorkGroupID.z);
+
+        uChunkFeedback.data[index].vertexOffset = vertexOffset;
+        uChunkFeedback.data[index].vertexCount = sVertexCount;
+        uChunkFeedback.data[index].indexOffset = indexOffset;
+        uChunkFeedback.data[index].indexCount = sIndexCount;
+    }
+}
