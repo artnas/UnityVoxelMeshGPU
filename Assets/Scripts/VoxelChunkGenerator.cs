@@ -46,6 +46,7 @@ public class VoxelChunkGenerator : MonoBehaviour
         _chunkFeedbackBuffer = new ComputeBuffer(1, sizeof(ChunkFeedback));
         _chunkFeedbackBuffer.SetData(new []{ new ChunkFeedback() });
         _subChunkFeedbackBuffer = new ComputeBuffer(SubChunkSize * SubChunkSize * SubChunkSize, sizeof(SubChunkFeedback));
+        _subChunkFeedbackBuffer.SetData(new SubChunkFeedback[SubChunkSize * SubChunkSize * SubChunkSize]);
         // max voxels * 4 vertices per face * 6 faces per voxel
         _vertexBuffer = new ComputeBuffer(VoxelCount * 4 * 6, sizeof(Vertex));
         // max voxels * 6 faces per voxel * 6 indices per face
@@ -72,8 +73,8 @@ public class VoxelChunkGenerator : MonoBehaviour
     private void Compute()
     {
         // dispatch compute shaders
-        voxelizerComputeShader.Dispatch(_voxelizerKernelId, WorkGroupSize, WorkGroupSize, WorkGroupSize);
-        feedbackComputeShader.Dispatch(_feedbackKernelId, WorkGroupSize, WorkGroupSize, WorkGroupSize);
+        feedbackComputeShader.Dispatch(_feedbackKernelId, SubChunkSize, SubChunkSize, SubChunkSize);
+        voxelizerComputeShader.Dispatch(_voxelizerKernelId, SubChunkSize, SubChunkSize, SubChunkSize);
     }
 
     private void ReadData()
@@ -85,6 +86,15 @@ public class VoxelChunkGenerator : MonoBehaviour
         
         Debug.Log($"feedback: {chunkFeedback.vertexCount} vertices, {chunkFeedback.indexCount} indices");
         
+        var subChunkFeedbackArray = new SubChunkFeedback[SubChunkSize * SubChunkSize * SubChunkSize];
+        _subChunkFeedbackBuffer.GetData(subChunkFeedbackArray);
+
+        for (var index = 0; index < subChunkFeedbackArray.Length; index++)
+        {
+            var subChunk = subChunkFeedbackArray[index];
+            Debug.Log($"{index}: {subChunk.vertexCount} vertices, {subChunk.vertexOffset} offset, {subChunk.indexCount} indices, {subChunk.indexOffset} offset");
+        }
+
         // get vertices and indices
         var vertices = new Vertex[chunkFeedback.vertexCount];
         var indices = new int[chunkFeedback.indexCount];

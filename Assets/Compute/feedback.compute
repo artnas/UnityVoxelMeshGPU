@@ -49,19 +49,19 @@ bool hasVoxel(int3 coord) {
 }
 
 [numthreads(8, 8, 8)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+void CSMain (uint3 dispatchID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
-    if (id.x == 0 && id.y == 0 && id.z == 0) {
+    if (groupThreadID.x == 0 && groupThreadID.y == 0 && groupThreadID.z == 0) {
         sVertexCount = 0;
         sIndexCount = 0;
     }
 
     GroupMemoryBarrierWithGroupSync();
-
-    uint globalVoxelIndex = to1D(id);
+    
+    uint globalVoxelIndex = to1D(dispatchID);
 
     if (uVoxels[globalVoxelIndex] > 0) {
-        int3 coord = int3(id);
+        int3 coord = int3(dispatchID);
 
         uint vertexCount = 0;
         uint indexCount = 0;
@@ -102,18 +102,23 @@ void CSMain (uint3 id : SV_DispatchThreadID)
 
     GroupMemoryBarrierWithGroupSync();
 
-    if (id.x == 0 && id.y == 0 && id.z == 0)
+    if (groupThreadID.x == 0 && groupThreadID.y == 0 && groupThreadID.z == 0)
     {
-        uint vertexOffset, indexOffset;
+        uint vertexOffset = 0, indexOffset = 0;
         
         InterlockedAdd(uFeedback[0].vertexCount, sVertexCount, vertexOffset);
         InterlockedAdd(uFeedback[0].indexCount, sIndexCount, indexOffset);
         
-        uint index = id.x + 10 * (id.y + 10 * id.z);
+        uint index = groupID.x + 10 * (groupID.y + 10 * groupID.z);
 
         uChunkFeedback[index].vertexOffset = vertexOffset;
         uChunkFeedback[index].vertexCount = sVertexCount;
         uChunkFeedback[index].indexOffset = indexOffset;
         uChunkFeedback[index].indexCount = sIndexCount;
+
+        // uChunkFeedback[index].vertexOffset = 1;
+        // uChunkFeedback[index].vertexCount = 2;
+        // uChunkFeedback[index].indexOffset = 3;
+        // uChunkFeedback[index].indexCount = 4;
     }
 }

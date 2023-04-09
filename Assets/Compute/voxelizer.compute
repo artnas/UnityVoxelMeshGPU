@@ -44,11 +44,6 @@ uint3 to3D(uint idx) {
     uint x = idx % CHUNK_SIZE;
     uint y = (idx / CHUNK_SIZE) % CHUNK_SIZE;
     uint z = idx / (CHUNK_SIZE * CHUNK_SIZE);
-
-    // uint z = idx / (CHUNK_SIZE * CHUNK_SIZE);
-    // idx -= (z * CHUNK_SIZE * CHUNK_SIZE);
-    // uint y = idx / CHUNK_SIZE;
-    // uint x = idx % CHUNK_SIZE;
     return uint3(x, y, z);
 }
 
@@ -70,11 +65,11 @@ void setVertex(out Vertex vertex, in float3 position, in float2 texcoord, in flo
 }
 
 [numthreads(8, 8, 8)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+void CSMain (uint3 dispatchID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
-    if (id.x == 0 && id.y == 0 && id.z == 0) {
+    if (groupThreadID.x == 0 && groupThreadID.y == 0 && groupThreadID.z == 0) {
         // sChunkIndex = uChunkIndices.data[gl_WorkGroupID.x + 10 * (gl_WorkGroupID.y + 10 * gl_WorkGroupID.z)];
-        sChunkIndex = id.x + 10 * (id.y + 10 * id.z);
+        sChunkIndex = groupID.x + 10 * (groupID.y + 10 * groupID.z);
         sVertexOffset = uChunkFeedback[sChunkIndex].vertexOffset;
         sIndexOffset = uChunkFeedback[sChunkIndex].indexOffset;
         sVertexCount = uChunkFeedback[sChunkIndex].vertexCount;
@@ -82,15 +77,15 @@ void CSMain (uint3 id : SV_DispatchThreadID)
     }
 
     GroupMemoryBarrierWithGroupSync();
-
-    uint globalVoxelIndex = to1D(id);
+    
+    uint globalVoxelIndex = to1D(dispatchID);
 
     if (uVoxels[globalVoxelIndex] > 0)
     {
-        int3 coord = int3(id);
+        int3 coord = int3(dispatchID);
         float3 position = float3(coord);
 
-        uint vertexOffset, indexOffset;
+        uint vertexOffset = 0, indexOffset = 0;
 
         // +X
         if (!hasVoxel(coord + int3(1, 0, 0))) {
