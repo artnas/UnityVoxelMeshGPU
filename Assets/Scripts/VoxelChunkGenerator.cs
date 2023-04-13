@@ -1,5 +1,6 @@
 using Data;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
 public class VoxelChunkGenerator : MonoBehaviour
@@ -33,7 +34,8 @@ public class VoxelChunkGenerator : MonoBehaviour
         // create mesh
         _mesh = new Mesh
         {
-            name = "Voxel Chunk"
+            name = "Voxel Chunk",
+            indexFormat = IndexFormat.UInt32
         };
         _meshFilter.sharedMesh = _mesh;
 
@@ -84,16 +86,16 @@ public class VoxelChunkGenerator : MonoBehaviour
         _chunkFeedbackBuffer.GetData(chunkFeedbackArray);
         var chunkFeedback = chunkFeedbackArray[0];
         
-        Debug.Log($"feedback: {chunkFeedback.vertexCount} vertices, {chunkFeedback.indexCount} indices");
+        // Debug.Log($"feedback: {chunkFeedback.vertexCount} vertices, {chunkFeedback.indexCount} indices");
         
-        var subChunkFeedbackArray = new SubChunkFeedback[SubChunkSize * SubChunkSize * SubChunkSize];
-        _subChunkFeedbackBuffer.GetData(subChunkFeedbackArray);
+        // var subChunkFeedbackArray = new SubChunkFeedback[SubChunkSize * SubChunkSize * SubChunkSize];
+        // _subChunkFeedbackBuffer.GetData(subChunkFeedbackArray);
 
-        for (var index = 0; index < subChunkFeedbackArray.Length; index++)
-        {
-            var subChunk = subChunkFeedbackArray[index];
-            Debug.Log($"{index}: {subChunk.vertexCount} vertices, {subChunk.vertexOffset} offset, {subChunk.indexCount} indices, {subChunk.indexOffset} offset");
-        }
+        // for (var index = 0; index < subChunkFeedbackArray.Length; index++)
+        // {
+        //     var subChunk = subChunkFeedbackArray[index];
+        //     Debug.Log($"{index}: {subChunk.vertexCount} vertices, {subChunk.vertexOffset} offset, {subChunk.indexCount} indices, {subChunk.indexOffset} offset");
+        // }
 
         // get vertices and indices
         var vertices = new Vertex[chunkFeedback.vertexCount];

@@ -76,7 +76,7 @@ void CSMain (uint3 dispatchID : SV_DispatchThreadID, uint3 groupID : SV_GroupID,
         sIndexCount = uChunkFeedback[sChunkIndex].indexCount;
     }
 
-    GroupMemoryBarrierWithGroupSync();
+    AllMemoryBarrierWithGroupSync();
     
     uint globalVoxelIndex = to1D(dispatchID);
 
