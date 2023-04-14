@@ -182,7 +182,7 @@ public class VoxelChunkGenerator : MonoBehaviour
 
         var bounds = new Bounds(Vector3.one * ChunkSize / 2f, Vector3.one * ChunkSize);
         
-        Graphics.DrawProcedural(drawMaterial, bounds, MeshTopology.Triangles, (int)chunkFeedback.vertexCount);
+        Graphics.DrawProcedural(drawMaterial, bounds, MeshTopology.Triangles, (int)chunkFeedback.indexCount);
     }
 
     private void Reset()
