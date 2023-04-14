@@ -23,5 +23,5 @@ There is a lot to improve here, but it's a solid foundation
 
 ## Credits
 
-- [HLSL compute shaders by Demurzasty](https://github.com/demurzasty/HolyGrail)
+- [OpenGL voxelizer compute shaders by Demurzasty](https://github.com/demurzasty/HolyGrail)
 - [GPU Noise by keijiro](https://github.com/keijiro/NoiseShader)
