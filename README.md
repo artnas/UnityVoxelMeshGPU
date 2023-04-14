@@ -17,6 +17,8 @@ The mesh is generated on the GPU and is never read back to the CPU to create a M
 
 ## TODO
 
+There is a lot to improve here, but it's a solid foundation
+
 - Graphics.DrawProceduralIndirect instead of Graphics.DrawProcedural
 
 ## Credits
