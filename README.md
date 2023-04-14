@@ -8,9 +8,9 @@ https://user-images.githubusercontent.com/14143603/231909731-d0047d10-7ccd-440d-
 
 ## How it works
 
-- generate voxels compute is run, voxel data (0/1) is generated using 3d noise
-- feedback compute is run, this iterates all voxels and calculates the count of vertices and indices which will be required for the mesh
-- voxelizer compute is run, this iterates all voxels and puts vertex and index data into the buffers
+- generate voxels compute -> voxel data (0/1) is generated using 3d noise
+- feedback compute -> iterates all voxels and calculates the count of vertices and indices which will be required for the mesh
+- voxelizer compute -> iterates all voxels and writes vertex and index data into the buffers
 - the mesh is drawn with Graphics.DrawProceduralIndirect using data from index and vertex buffers
 
 The mesh is generated on the GPU and is never read back to the CPU to create a Mesh object, that would be very slow by comparison (5 FPS).
