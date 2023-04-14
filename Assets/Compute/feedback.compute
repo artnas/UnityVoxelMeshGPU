@@ -2,6 +2,7 @@
 #include "voxels.hlsl"
 
 RWStructuredBuffer<int> uVoxels;
+RWStructuredBuffer<uint> uIndirectArgs;
 RWStructuredBuffer<GeometryData> uFeedback;
 RWStructuredBuffer<ChunkFeedback> uChunkFeedback;
 
@@ -86,5 +87,7 @@ void CSMain (uint3 dispatchID : SV_DispatchThreadID, uint3 groupID : SV_GroupID,
         uChunkFeedback[index].vertexCount = sVertexCount;
         uChunkFeedback[index].indexOffset = indexOffset;
         uChunkFeedback[index].indexCount = sIndexCount;
+
+        uIndirectArgs[0] = uFeedback[0].indexCount;
     }
 }
