@@ -1,10 +1,15 @@
 # GPU voxel mesh generation and drawing in Unity HDRP
 
-This is an experiment to generate a cubic voxel chunk mesh as efficiently as possible. This is insanely fast, meshing and drawing at around <b>650</b> FPS on my RTX 4090. The mesh generation itself is much faster than that, running at more than <b>1000</b> FPS with camera disabled. I did not measure it exactly by doing a build, but it's pretty quick.
-
-This example uses a 3D noise library to generate voxel data. You can control frequency, amplitude and speed of the noise via inspector in Unity. This is also an example on how to use shader graph in conjunction with Graphics.DrawProceduralIndirect. This was made possible when Unity added VertexId node to shader graph.
+This is an experiment to generate a cubic voxel chunk mesh as efficiently as possible. This is insanely fast, meshing and drawing at around <b>650</b> FPS on my RTX 4090. The mesh generation itself is much faster than that, running at more than <b>1000</b> FPS with camera disabled.
 
 https://user-images.githubusercontent.com/14143603/231909731-d0047d10-7ccd-440d-8c25-6b64d07315ad.mp4
+
+This example uses a 3D noise library to generate voxel data. You can control frequency, amplitude, offset and speed of the noise via inspector in Unity.
+
+## What you can learn from it
+
+- How to create a mesh on gpu
+- How to use shader graph with a custom function to draw a mesh using Graphics.DrawProceduralIndirect. This was only recently made possible when Unity added VertexId node to shader graph.
 
 ## How it works
 
