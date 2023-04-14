@@ -1,29 +1,9 @@
 ﻿#pragma kernel CSMain
-
-#define CHUNK_SIZE 80
-
-struct Vertex {
-    float3 position;
-    float2 texcoord;
-    float3 normal;
-};
-
-struct GeometryData {
-    uint vertexCount;
-    uint indexCount;
-};
-
-struct ChunkFeedback {
-    uint vertexOffset;
-    uint vertexCount;
-    uint indexOffset;
-    uint indexCount;
-};
+#include "voxels.hlsl"
 
 RWStructuredBuffer<Vertex> uVertices;
 RWStructuredBuffer<uint> uIndices;
 StructuredBuffer<int> uVoxels;
-// StructuredBuffer<GeometryData> uFeedback;
 StructuredBuffer<ChunkFeedback> uChunkFeedback;
 
 groupshared uint sVertexOffset;
@@ -31,21 +11,6 @@ groupshared uint sVertexCount;
 groupshared uint sIndexOffset;
 groupshared uint sIndexCount;
 groupshared uint sChunkIndex;
-
-uint to1D(uint3 pos) {
-    return pos.x + CHUNK_SIZE * (pos.y + CHUNK_SIZE * pos.z);
-}
-
-int to1D(int3 pos) {
-    return pos.x + CHUNK_SIZE * (pos.y + CHUNK_SIZE * pos.z);
-}
-
-uint3 to3D(uint idx) {
-    uint x = idx % CHUNK_SIZE;
-    uint y = (idx / CHUNK_SIZE) % CHUNK_SIZE;
-    uint z = idx / (CHUNK_SIZE * CHUNK_SIZE);
-    return uint3(x, y, z);
-}
 
 bool hasVoxel(int3 coord) {
     if (coord.x < 0 || coord.x >= CHUNK_SIZE || 
@@ -68,7 +33,6 @@ void setVertex(out Vertex vertex, in float3 position, in float2 texcoord, in flo
 void CSMain (uint3 dispatchID : SV_DispatchThreadID, uint3 groupID : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
 {
     if (groupThreadID.x == 0 && groupThreadID.y == 0 && groupThreadID.z == 0) {
-        // sChunkIndex = uChunkIndices.data[gl_WorkGroupID.x + 10 * (gl_WorkGroupID.y + 10 * gl_WorkGroupID.z)];
         sChunkIndex = groupID.x + 10 * (groupID.y + 10 * groupID.z);
         sVertexOffset = uChunkFeedback[sChunkIndex].vertexOffset;
         sIndexOffset = uChunkFeedback[sChunkIndex].indexOffset;

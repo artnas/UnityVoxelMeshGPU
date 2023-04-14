@@ -1,0 +1,28 @@
+﻿#pragma kernel CSMain
+#include "voxels.hlsl"
+#include "Library\PackageCache\jp.keijiro.noiseshader@2.0.0/Shader/ClassicNoise3D.hlsl"
+
+RWStructuredBuffer<int> uVoxels;
+
+float3 uPosition = float3(0, 0, 0);
+float uFrequency = 0.1f;
+float uAmplitude = 0.5f;
+
+[numthreads(8, 8, 8)]
+void CSMain (uint3 dispatchID : SV_DispatchThreadID)
+{
+    const uint globalVoxelIndex = to1D(dispatchID);
+    
+    int3 coord = int3(dispatchID);
+    float3 position = float3(coord) + uPosition;
+
+    float noise = ClassicNoise(position * uFrequency) * uAmplitude;
+
+    if (noise > 0)
+    {
+        uVoxels[globalVoxelIndex] = 1;
+    } else
+    {
+        uVoxels[globalVoxelIndex] = 0;
+    }
+}

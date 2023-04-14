@@ -1,18 +1,5 @@
 ﻿#pragma kernel CSMain
-
-#define CHUNK_SIZE 80
-
-struct GeometryData {
-    uint vertexCount;
-    uint indexCount;
-};
-
-struct ChunkFeedback {
-    uint vertexOffset;
-    uint vertexCount;
-    uint indexOffset;
-    uint indexCount;
-};
+#include "voxels.hlsl"
 
 RWStructuredBuffer<int> uVoxels;
 RWStructuredBuffer<GeometryData> uFeedback;
@@ -20,22 +7,6 @@ RWStructuredBuffer<ChunkFeedback> uChunkFeedback;
 
 groupshared uint sVertexCount;
 groupshared uint sIndexCount;
-
-uint to1D(uint3 pos) {
-    return pos.x + CHUNK_SIZE * (pos.y + CHUNK_SIZE * pos.z);
-}
-
-int to1D(int3 pos) {
-    return pos.x + CHUNK_SIZE * (pos.y + CHUNK_SIZE * pos.z);
-}
-
-uint3 to3D(uint idx) {
-    uint x = idx % CHUNK_SIZE;
-    uint y = (idx / CHUNK_SIZE) % CHUNK_SIZE;
-    uint z = idx / (CHUNK_SIZE * CHUNK_SIZE);
-    
-    return uint3(x, y, z);
-}
 
 bool hasVoxel(int3 coord) {
     if (coord.x < 0 || coord.x >= CHUNK_SIZE || 

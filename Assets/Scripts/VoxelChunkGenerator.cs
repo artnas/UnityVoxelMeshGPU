@@ -1,4 +1,7 @@
 using Data;
+using Native;
+using Unity.Collections;
+using Unity.Jobs;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -9,11 +12,19 @@ public class VoxelChunkGenerator : MonoBehaviour
     private const int WorkGroupSize = 8;
     private const int SubChunkSize = ChunkSize / WorkGroupSize;
     private const int VoxelCount = ChunkSize * ChunkSize * ChunkSize;
+
+    public bool draw = true;
+    public float frequency = 0.1f;
+    public float amplitude = 1f;
+    public Vector3 position;
+    public Vector3 movementSpeed = new Vector3(5, 5, 5);
     
+    public ComputeShader generateVoxelsComputeShader;
     public ComputeShader voxelizerComputeShader;
     public ComputeShader feedbackComputeShader;
-    
-    private readonly int[] _voxels = new int[ChunkSize * ChunkSize * ChunkSize];
+    public Material drawMaterial;
+
+    private NativeArray<int> _voxels;
     
     private ComputeBuffer _voxelBuffer;
     private ComputeBuffer _chunkFeedbackBuffer;
@@ -21,13 +32,18 @@ public class VoxelChunkGenerator : MonoBehaviour
     private ComputeBuffer _vertexBuffer;
     private ComputeBuffer _indexBuffer;
     
+    private int _generateVoxelsKernelId;
     private int _voxelizerKernelId;
     private int _feedbackKernelId;
     private Mesh _mesh;
     private MeshFilter _meshFilter;
 
+    private readonly ChunkFeedback[] _chunkFeedback = new ChunkFeedback[1];
+
     private unsafe void Start()
     {
+        _voxels = new NativeArray<int>(ChunkSize * ChunkSize * ChunkSize, Allocator.Persistent);
+        
         // get mesh filter
         _meshFilter = GetComponent<MeshFilter>();
         
@@ -40,6 +56,7 @@ public class VoxelChunkGenerator : MonoBehaviour
         _meshFilter.sharedMesh = _mesh;
 
         // get kernel ids
+        _generateVoxelsKernelId = generateVoxelsComputeShader.FindKernel("CSMain");
         _voxelizerKernelId = voxelizerComputeShader.FindKernel("CSMain");
         _feedbackKernelId = feedbackComputeShader.FindKernel("CSMain");
         
@@ -55,47 +72,81 @@ public class VoxelChunkGenerator : MonoBehaviour
         _indexBuffer = new ComputeBuffer(VoxelCount * 6 * 6, sizeof(int));
         
         // bind buffers
+        generateVoxelsComputeShader.SetBuffer(_generateVoxelsKernelId, "uVoxels", _voxelBuffer);
+        
         voxelizerComputeShader.SetBuffer(_voxelizerKernelId, "uVertices", _vertexBuffer);
         voxelizerComputeShader.SetBuffer(_voxelizerKernelId, "uIndices", _indexBuffer);
         voxelizerComputeShader.SetBuffer(_voxelizerKernelId, "uVoxels", _voxelBuffer);
         voxelizerComputeShader.SetBuffer(_voxelizerKernelId, "uChunkFeedback", _subChunkFeedbackBuffer);
+        
         feedbackComputeShader.SetBuffer(_feedbackKernelId, "uVoxels", _voxelBuffer);
         feedbackComputeShader.SetBuffer(_feedbackKernelId, "uFeedback", _chunkFeedbackBuffer);
         feedbackComputeShader.SetBuffer(_feedbackKernelId, "uChunkFeedback", _subChunkFeedbackBuffer);
+
+        // copy material
+        drawMaterial = new Material(drawMaterial);
+        drawMaterial.SetBuffer("Vertices", _vertexBuffer);
+        drawMaterial.SetBuffer("Indices", _indexBuffer);
     }
 
     private void Update()
     {
-        GenerateRandomVoxels();
+        MoveNoiseOrigin();
+        
+        // old and busted
+        // GenerateRandomVoxelsCpu();
+        
+        // new hotness
+        GenerateRandomVoxelsGpu();
+        
         Compute();
-        ReadData();
+        
+        if (draw)
+            DrawProcedural();
+        
         Reset();
+    }
+
+    private void MoveNoiseOrigin()
+    {
+        position += movementSpeed * Time.deltaTime;
+        
+        generateVoxelsComputeShader.SetFloat("uFrequency", frequency);
+        generateVoxelsComputeShader.SetFloat("uAmplitude", amplitude);
+        generateVoxelsComputeShader.SetVector("uPosition", position);
     }
 
     private void Compute()
     {
-        // dispatch compute shaders
+        // dispatch feedback shader
         feedbackComputeShader.Dispatch(_feedbackKernelId, SubChunkSize, SubChunkSize, SubChunkSize);
+        
+        // read feedback data
+        ReadFeedbackData();
+        
+        // dispatch voxelizer shader
         voxelizerComputeShader.Dispatch(_voxelizerKernelId, SubChunkSize, SubChunkSize, SubChunkSize);
     }
 
-    private void ReadData()
+    private void ReadFeedbackData()
     {
-        // read back data
-        var chunkFeedbackArray = new ChunkFeedback[1];
-        _chunkFeedbackBuffer.GetData(chunkFeedbackArray);
-        var chunkFeedback = chunkFeedbackArray[0];
+        // read back data synchronously, this is a bottleneck
+        _chunkFeedbackBuffer.GetData(_chunkFeedback);
         
-        // Debug.Log($"feedback: {chunkFeedback.vertexCount} vertices, {chunkFeedback.indexCount} indices");
-        
-        // var subChunkFeedbackArray = new SubChunkFeedback[SubChunkSize * SubChunkSize * SubChunkSize];
-        // _subChunkFeedbackBuffer.GetData(subChunkFeedbackArray);
-
-        // for (var index = 0; index < subChunkFeedbackArray.Length; index++)
+        // reading async is much better, but you need to synchronize the vertex count when using DrawProcedural
+        // AsyncGPUReadback.Request(_chunkFeedbackBuffer, request =>
         // {
-        //     var subChunk = subChunkFeedbackArray[index];
-        //     Debug.Log($"{index}: {subChunk.vertexCount} vertices, {subChunk.vertexOffset} offset, {subChunk.indexCount} indices, {subChunk.indexOffset} offset");
-        // }
+        //     var data = request.GetData<ChunkFeedback>();
+        //     _chunkFeedback[0] = data[0];
+        // });
+    }
+
+    /// <summary>
+    /// Create a mesh, get data from the buffers and assign it
+    /// </summary>
+    private void VisualiseChunkMesh()
+    {
+        var chunkFeedback = _chunkFeedback[0];
 
         // get vertices and indices
         var vertices = new Vertex[chunkFeedback.vertexCount];
@@ -125,21 +176,38 @@ public class VoxelChunkGenerator : MonoBehaviour
         _mesh.SetIndices(indices, MeshTopology.Triangles, 0);
     }
 
-    private void Reset()
+    private void DrawProcedural()
     {
-        var chunkFeedback = new ChunkFeedback[1];
-        _chunkFeedbackBuffer.SetData(chunkFeedback);
+        var chunkFeedback = _chunkFeedback[0];
+
+        var bounds = new Bounds(Vector3.one * ChunkSize / 2f, Vector3.one * ChunkSize);
+        
+        Graphics.DrawProcedural(drawMaterial, bounds, MeshTopology.Triangles, (int)chunkFeedback.vertexCount);
     }
 
-    private void GenerateRandomVoxels()
+    private void Reset()
     {
-        for (var i = 0; i < _voxels.Length; i++)
+        _chunkFeedback[0] = new ChunkFeedback();
+        _chunkFeedbackBuffer.SetData(_chunkFeedback);
+    }
+
+    private void GenerateRandomVoxelsCpu()
+    {
+        var generateRandomVoxelsJob = new GenerateRandomVoxelsJob
         {
-            _voxels[i] = Random.Range(0, 2);
-        }
+            Voxels = _voxels
+        };
+        
+        generateRandomVoxelsJob.Schedule(_voxels.Length, ChunkSize).Complete();
         
         // set buffer data
         _voxelBuffer.SetData(_voxels);
+    }
+    
+    private void GenerateRandomVoxelsGpu()
+    {
+        // dispatch shader
+        generateVoxelsComputeShader.Dispatch(_generateVoxelsKernelId, SubChunkSize, SubChunkSize, SubChunkSize);
     }
 
     private void OnDestroy()
@@ -149,6 +217,7 @@ public class VoxelChunkGenerator : MonoBehaviour
         _subChunkFeedbackBuffer.Release();
         _vertexBuffer.Release();
         _indexBuffer.Release();
+        _voxels.Dispose();
         Destroy(_mesh);
     }
 }
